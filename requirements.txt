@@ -1,0 +1,5 @@
+streamlit
+scipy
+numpy
+pandas
+# Ajoutez d'autres bibliothèques nécessaires ici
