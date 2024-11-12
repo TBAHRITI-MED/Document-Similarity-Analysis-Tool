@@ -88,12 +88,13 @@ def calculate_similarity_matrix(distance_matrix):
     max_distance = np.max(distance_matrix)
     return 1 - (distance_matrix / max_distance)
 
-# 11. Trouver les k documents les plus proches
-def K_plus_proches_documents(doc_requete, k, similarity_matrix):
+def K_plus_proches_documents(doc_requete, k, similarity_matrix, sentences):
     similarites = similarity_matrix[doc_requete]
     similarites_idx = [(i, similarites[i]) for i in range(len(similarites)) if i != doc_requete]
     similarites_idx.sort(key=lambda x: x[1], reverse=True)
-    return similarites_idx[:k]
+    
+    # Récupérer les k documents les plus similaires avec leurs phrases
+    return [(idx, similarity, sentences[idx]) for idx, similarity in similarites_idx[:k]]
 
 # Titre de l'application
 st.title("Analyse de similarité de documents")
@@ -211,16 +212,48 @@ if chiraq_text:
     st.dataframe(similarity_df)
     
     # Choisir un document pour trouver les plus proches
-    doc_requete = st.number_input("Entrez le numéro du document (1 à N) :", 
-                                  min_value=1, max_value=len(sentences), step=1) - 1
-    k = st.slider("Choisissez le nombre de documents similaires à afficher :", 1, len(sentences)-1, 3)
+    # Affichage des documents avec des extraits de phrases
+options_docs = [
+    f"Document {i + 1}: {sentences[i][:100]}..." if len(sentences[i]) > 100 else f"Document {i + 1}: {sentences[i]}"
+    for i in range(len(sentences))
+]
+st.write(options_docs) 
 
-    # Calculer les documents les plus similaires
-    if st.button("Trouver les documents similaires"):
-        k_plus_proches = K_plus_proches_documents(doc_requete, k, similarity_matrix)
-        st.write(f"Les {k} documents les plus similaires au document {doc_requete + 1} :")
-        for idx, sim in k_plus_proches:
-            st.write(f"Document {idx + 1} avec similarité de {sim:.4f}")
+###################
+from sklearn.feature_extraction.text import TfidfVectorizer
+def calculer_similarite(phrase, documents):
+    vectorizer = TfidfVectorizer()
+    # Fusionner la phrase recherchée et les documents
+    corpus = [phrase] + documents
+    tfidf_matrix = vectorizer.fit_transform(corpus)
+    
+    # Calcul de la similarité entre la phrase et chaque document
+    similarites = (tfidf_matrix * tfidf_matrix.T).A[0][1:]
+    return similarites
+##########
+# Entrée pour le numéro de document
+doc_requete = st.number_input("Entrez le numéro du document (1 à N) :", 
+                              min_value=1, max_value=len(sentences), step=1) - 1
+k = st.slider("Choisissez le nombre de documents similaires à afficher :", 1, len(sentences)-1, 3)
+# Entrée pour rechercher une phrase dans les documents
+phrase_recherche = st.text_input("Entrez une phrase pour rechercher dans les documents :")
+
+# Calculer les documents les plus similaires si la phrase de recherche est remplie
+if phrase_recherche:
+    similarites_recherche = calculer_similarite(phrase_recherche, sentences)
+    
+    # Trier les documents par similarité
+    indices_similaires = sorted(range(len(similarites_recherche)), key=lambda i: similarites_recherche[i], reverse=True)
+    
+    st.write(f"Les {k} documents les plus similaires à la phrase recherchée :")
+    for idx in indices_similaires[:k]:
+        st.write(f"Document {idx + 1} avec similarité de {similarites_recherche[idx]:.4f} : {sentences[idx][:200]}...")
+# Calculer les documents les plus similaires
+if st.button("Trouver les documents similaires"):
+    k_plus_proches = K_plus_proches_documents(doc_requete, k, similarity_matrix, sentences)
+    st.write(f"Les {k} documents les plus similaires au document {doc_requete + 1} :")
+    for idx, sim, phrase in k_plus_proches:
+        st.write(f"Document {idx + 1} avec similarité de {sim:.4f} : {phrase[:200]}...")  # Afficher un extrait de 200 caractères de la phrase
 
     
 
