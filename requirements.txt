@@ -2,4 +2,11 @@ streamlit
 scipy
 numpy
 pandas
+seaborn   
+matplotlib
+wordcloud 
+sklearn
+networkx 
+     
+
 # Ajoutez d'autres bibliothèques nécessaires ici

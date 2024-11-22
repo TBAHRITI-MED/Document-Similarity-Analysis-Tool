@@ -5,22 +5,56 @@ import pandas as pd
 from scipy.spatial.distance import pdist, squareform, braycurtis
 from scipy.special import kl_div
 from sklearn.feature_extraction.text import CountVectorizer
-from scipy.spatial.distance import cdist
 from sklearn.preprocessing import normalize
+from nltk.corpus import stopwords
+from nltk.stem import PorterStemmer
+from nltk.stem import WordNetLemmatizer
+import webbrowser
+import nltk
+from scipy.spatial.distance import cdist
+
+nltk.download('stopwords')
+nltk.download('wordnet')
+
 st.set_page_config(page_title="Analyse de similarité de documents", page_icon="📄", layout="wide")
+
+# Options de prétraitement
+st.sidebar.subheader("Prétraitement du texte")
+remove_stopwords = st.sidebar.checkbox("Supprimer les stop words", value=True)
+apply_stemming = st.sidebar.checkbox("Appliquer le stemming", value=False)
+apply_lemmatization = st.sidebar.checkbox("Appliquer la lemmatisation", value=False)
+
+# Fonction de prétraitement avec options
+def preprocess_text(sentences):
+    stop_words = set(stopwords.words('french' if langue == "Français" else 'english'))
+    stemmer = PorterStemmer()
+    lemmatizer = WordNetLemmatizer()
+    
+    processed_sentences = []
+    for sentence in sentences:
+        tokens = re.findall(r'\b\w+\b', sentence.lower())
+        
+        if remove_stopwords:
+            tokens = [word for word in tokens if word not in stop_words]
+        
+        if apply_stemming:
+            tokens = [stemmer.stem(word) for word in tokens]
+        
+        if apply_lemmatization:
+            tokens = [lemmatizer.lemmatize(word) for word in tokens]
+        
+        processed_sentences.append(" ".join(tokens))
+    
+    unique_tokens = set()
+    for sentence in processed_sentences:
+        unique_tokens.update(sentence.split())
+    
+    return sorted(unique_tokens), processed_sentences
 
 # 1. Diviser le texte en phrases
 def split_into_sentences(text):
     sentences = re.split(r'(?<=[.!?])\s+', text.strip())
     return sentences
-
-# 2. Prétraitement du texte
-def preprocess_text(sentences):
-    unique_tokens = set()
-    for sentence in sentences:
-        tokens = re.findall(r'\b\w+\b', sentence.lower())
-        unique_tokens.update(tokens)
-    return sorted(unique_tokens)
 
 # 3. Créer la matrice binaire et la matrice d'occurrences avec normalisation
 def create_matrices(sentences, unique_tokens, normalization_type):
@@ -101,8 +135,19 @@ st.title("Analyse de similarité de documents")
 
 # Barre latérale
 st.sidebar.subheader("Paramètres de configuration")
+# Lien pour naviguer vers la page de recherche
+st.sidebar.write("### Navigation")
+page_selection = st.sidebar.radio("Sélectionner une page", ["Page principale", "Recherche dans un document"])
+
+if page_selection == "Recherche dans un document":
+    # Ouvrir la page de recherche dans un document dans un autre onglet
+    webbrowser.open("http://localhost:8502/")
+    st.write("Redirection vers la page de recherche dans un document...")
+
 # Ajout d'une description
-st.sidebar.write("""
+elif page_selection == "Page principale":
+
+    st.sidebar.write("""
     **Instructions :** Sélectionnez les options ci-dessus pour configurer l'analyse de similarité des documents. 
 """)
 # Choix de la langue
@@ -165,14 +210,11 @@ Il y a là un espoir qui ne demande qu'à grandir, un espoir que je veux servir.
 Vive la République !
 Vive la France !"""
 
-# Traitement si le texte est fourni
 if chiraq_text:
- with st.spinner("Traitement en cours..."):
-    sentences = split_into_sentences(chiraq_text)
-    st.write(f"Le texte contient {len(sentences)} phrases.")
-    
-    unique_tokens = preprocess_text(sentences)
-    binary_matrix, occurrence_matrix = create_matrices(sentences, unique_tokens, normalization_type)
+    with st.spinner("Traitement en cours..."):
+        sentences = split_into_sentences(chiraq_text)
+        unique_tokens, processed_sentences = preprocess_text(sentences)
+        binary_matrix, occurrence_matrix = create_matrices(processed_sentences, unique_tokens, normalization_type)
 
     # Sélectionner la matrice en fonction du descripteur choisi
     if descripteur == "Binaire":
@@ -233,6 +275,7 @@ def calculer_similarite(phrase, documents):
 ##########
 # Entrée pour le numéro de document
 doc_requete = st.number_input("Entrez le numéro du document (1 à N) :", 
+                               sentences = split_into_sentences(chiraq_text),
                               min_value=1, max_value=len(sentences), step=1) - 1
 k = st.slider("Choisissez le nombre de documents similaires à afficher :", 1, len(sentences)-1, 3)
 # Entrée pour rechercher une phrase dans les documents
