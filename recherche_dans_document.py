@@ -11,9 +11,10 @@ import seaborn as sns
 from wordcloud import WordCloud
 import pandas as pd
 
-# Télécharger les ressources nécessaires de nltk
-nltk.download('punkt')
-nltk.download('stopwords')
+# With these more specific downloads
+nltk.download('punkt', quiet=True)
+nltk.download('stopwords', quiet=True)
+nltk.download('punkt_tab', quiet=True)
 
 # Fonction pour détecter l'encodage d'un fichier
 def detecter_encodage(filepath):
@@ -108,6 +109,20 @@ if choix_analyse == "Dossier":
         textes_complets, documents_tokenized, noms_fichiers = charger_fichiers_et_tokenizer(folder_path)
         st.write(f"Fichiers chargés et tokenisés avec succès ! {len(noms_fichiers)} fichiers trouvés.")
         st.write(f"Nombre total de phrases : {len(documents_tokenized)}")
+        if "show_phrases" not in st.session_state:
+            st.session_state.show_phrases = False
+
+# Bouton pour basculer l'état
+        if st.button("Afficher/Cacher les phrases"):
+            st.session_state.show_phrases = not st.session_state.show_phrases
+
+# Afficher ou cacher les phrases en fonction de l'état
+        if st.session_state.show_phrases:
+            st.write("Les phrases détectées dans le texte sont :")
+            for idx, sentence in enumerate(documents_tokenized, start=1):
+                st.write(f"{idx}. {sentence}")
+        else:
+            st.write("Les phrases sont actuellement masquées. Cliquez sur le bouton pour les afficher.")
 
         # Afficher le nuage de mots global
         st.subheader("Nuage de mots pour tous les documents")

@@ -7,49 +7,68 @@ from scipy.special import kl_div
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.preprocessing import normalize
 from nltk.corpus import stopwords
-from nltk.stem import PorterStemmer
 from nltk.stem import WordNetLemmatizer
 import webbrowser
 import nltk
 from scipy.spatial.distance import cdist
+import gensim.downloader as api
+from gensim.models import Word2Vec, FastText
+import matplotlib.pyplot as plt
+from wordcloud import WordCloud
+import plotly.express as px
+from collections import Counter
+import io
+import base64
+from sklearn.metrics.pairwise import cosine_similarity 
+from sklearn.feature_extraction.text import TfidfVectorizer
+from nltk.stem import PorterStemmer, LancasterStemmer, SnowballStemmer
+from nltk.tokenize import word_tokenize
 
 nltk.download('stopwords')
 nltk.download('wordnet')
 
 st.set_page_config(page_title="Analyse de similarité de documents", page_icon="📄", layout="wide")
-
-# Options de prétraitement
-st.sidebar.subheader("Prétraitement du texte")
-remove_stopwords = st.sidebar.checkbox("Supprimer les stop words", value=True)
-apply_stemming = st.sidebar.checkbox("Appliquer le stemming", value=False)
-apply_lemmatization = st.sidebar.checkbox("Appliquer la lemmatisation", value=False)
-
 # Fonction de prétraitement avec options
-def preprocess_text(sentences):
+def preprocess_text(sentences, remove_stopwords, apply_stemming, selected_stemmer_name, langue):
+    # Choisir la langue des stopwords
     stop_words = set(stopwords.words('french' if langue == "Français" else 'english'))
-    stemmer = PorterStemmer()
-    lemmatizer = WordNetLemmatizer()
+    
+    # Choisir le stemmer en fonction de l'option sélectionnée
+    if selected_stemmer_name == "Porter":
+        stemmer = PorterStemmer()
+    elif selected_stemmer_name == "Lancaster":
+        stemmer = LancasterStemmer()
+    elif selected_stemmer_name == "Snowball (English)":
+        stemmer = SnowballStemmer("english")
+    elif selected_stemmer_name == "Snowball (French)":
+        stemmer = SnowballStemmer("french")
+    else:
+        stemmer = None  # Pas de stemming si l'option n'est pas valide
     
     processed_sentences = []
+    
     for sentence in sentences:
+        # Tokenisation de la phrase
         tokens = re.findall(r'\b\w+\b', sentence.lower())
         
+        # Supprimer les stop words si nécessaire
         if remove_stopwords:
             tokens = [word for word in tokens if word not in stop_words]
         
-        if apply_stemming:
+        # Appliquer le stemming si demandé
+        if apply_stemming and stemmer:
             tokens = [stemmer.stem(word) for word in tokens]
-        
-        if apply_lemmatization:
-            tokens = [lemmatizer.lemmatize(word) for word in tokens]
-        
+                
+        # Recréer la phrase traitée
         processed_sentences.append(" ".join(tokens))
     
+    # Extraire les tokens uniques du texte traité
     unique_tokens = set()
     for sentence in processed_sentences:
         unique_tokens.update(sentence.split())
     
     return sorted(unique_tokens), processed_sentences
+
 
 # 1. Diviser le texte en phrases
 def split_into_sentences(text):
@@ -130,6 +149,53 @@ def K_plus_proches_documents(doc_requete, k, similarity_matrix, sentences):
     # Récupérer les k documents les plus similaires avec leurs phrases
     return [(idx, similarity, sentences[idx]) for idx, similarity in similarites_idx[:k]]
 
+
+def generate_wordcloud(text, background_color='white'):
+    wordcloud = WordCloud(
+        background_color=background_color,
+        width=800,
+        height=400,
+        max_words=150
+    ).generate(text)
+    
+    # Créer une figure matplotlib
+    plt.figure(figsize=(10, 5))
+    plt.imshow(wordcloud, interpolation='bilinear')
+    plt.axis('off')
+    
+    # Convertir le plot en image pour Streamlit
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    plt.close()  # Fermer la figure pour libérer la mémoire
+    buf.seek(0)
+    return buf
+
+# Fonction pour prétraiter le texte pour Word2Vec/FastText
+def preprocess_for_embedding(sentences):
+    return [sentence.lower().split() for sentence in sentences]
+
+# Fonction pour entraîner Word2Vec
+def train_word2vec(processed_sentences):
+    model = Word2Vec(sentences=processed_sentences, vector_size=100, window=5, min_count=1, workers=4)
+    return model
+
+# Fonction pour entraîner FastText
+def train_fasttext(processed_sentences):
+    model = FastText(sentences=processed_sentences, vector_size=100, window=5, min_count=1, workers=4)
+    return model
+
+# Fonction pour obtenir le vecteur moyen d'une phrase
+def get_sentence_vector(model, sentence_words):
+    vectors = []
+    for word in sentence_words:
+        try:
+            vectors.append(model.wv[word])
+        except KeyError:
+            continue
+    if vectors:
+        return np.mean(vectors, axis=0)
+    return np.zeros(model.vector_size)
+
 # Titre de l'application
 st.title("Analyse de similarité de documents")
 
@@ -137,13 +203,16 @@ st.title("Analyse de similarité de documents")
 st.sidebar.subheader("Paramètres de configuration")
 # Lien pour naviguer vers la page de recherche
 st.sidebar.write("### Navigation")
-page_selection = st.sidebar.radio("Sélectionner une page", ["Page principale", "Recherche dans un document"])
+page_selection = st.sidebar.radio("Sélectionner une page", ["Page principale", "Recherche dans un document","Chatbot"])
 
 if page_selection == "Recherche dans un document":
     # Ouvrir la page de recherche dans un document dans un autre onglet
     webbrowser.open("http://localhost:8502/")
     st.write("Redirection vers la page de recherche dans un document...")
-
+elif page_selection == "Chatbot":
+    # Redirection vers la page du chatbot
+    st.write("Redirection vers le chatbot...")
+    webbrowser.open("http://localhost:8503/") 
 # Ajout d'une description
 elif page_selection == "Page principale":
 
@@ -152,6 +221,26 @@ elif page_selection == "Page principale":
 """)
 # Choix de la langue
 langue = st.sidebar.radio("Choisissez la langue du texte :", ("Français", "Anglais"))
+
+# Options de prétraitement
+st.sidebar.subheader("Prétraitement du texte")
+remove_stopwords = st.sidebar.checkbox("Supprimer les stop words", value=True)
+apply_stemming = st.sidebar.checkbox("Appliquer le stemming", value=False)
+
+# Liste des stemmers disponibles
+stemmers = {
+    "Porter": PorterStemmer(),
+    "Lancaster": LancasterStemmer(),
+    "Snowball (English)": SnowballStemmer("english"),
+    "Snowball (French)": SnowballStemmer("french")
+}
+
+# Choix du type de stemming
+selected_stemmer_name = st.sidebar.selectbox(
+    "Choisissez le type de stemming :", 
+    list(stemmers.keys())
+)
+selected_stemmer = stemmers[selected_stemmer_name]
 
 # Choix du descripteur et de la normalisation
 descripteur = st.sidebar.selectbox("Choisissez le descripteur à utiliser :", 
@@ -174,6 +263,19 @@ input_mode = st.sidebar.radio("Comment voulez-vous entrer le texte ?",
                                ("Rédaction manuelle", "Déposer un fichier .txt"))
 
 
+st.sidebar.markdown("---")
+st.sidebar.subheader("Paramètres d'embedding")
+embedding_type = st.sidebar.selectbox(
+    "Choisissez le type d'embedding",
+    ["Word2Vec", "FastText", "Aucun"]
+)
+
+# Ajout de la section nuage de mots
+st.sidebar.markdown("---")
+st.sidebar.subheader("Nuage de mots")
+show_wordcloud = st.sidebar.checkbox("Afficher le nuage de mots")
+wordcloud_bg_color = st.sidebar.color_picker("Couleur de fond du nuage de mots", "#ffffff")
+wordcloud_max_words = st.sidebar.slider("Nombre maximum de mots", 50, 300, 150)
 
 # Zone de texte pour la rédaction manuelle ou fichier
 if input_mode == "Rédaction manuelle":
@@ -213,7 +315,12 @@ Vive la France !"""
 if chiraq_text:
     with st.spinner("Traitement en cours..."):
         sentences = split_into_sentences(chiraq_text)
-        unique_tokens, processed_sentences = preprocess_text(sentences)
+        unique_tokens, processed_sentences = preprocess_text(
+        sentences, 
+        remove_stopwords=remove_stopwords, 
+        apply_stemming=apply_stemming, 
+        selected_stemmer_name=selected_stemmer_name, 
+        langue=langue)
         binary_matrix, occurrence_matrix = create_matrices(processed_sentences, unique_tokens, normalization_type)
 
     # Sélectionner la matrice en fonction du descripteur choisi
@@ -255,14 +362,84 @@ if chiraq_text:
     
     # Choisir un document pour trouver les plus proches
     # Affichage des documents avec des extraits de phrases
-options_docs = [
-    f"Document {i + 1}: {sentences[i][:100]}..." if len(sentences[i]) > 100 else f"Document {i + 1}: {sentences[i]}"
-    for i in range(len(sentences))
+     
+    options_docs = [
+    f"Document {i + 1}: {processed_sentences[i][:100]}..." if len(processed_sentences[i]) > 100 else f"Document {i + 1}: {processed_sentences[i]}"
+    for i in range(len(processed_sentences))
 ]
-st.write(options_docs) 
+    st.write(options_docs) 
+    
 
+
+# Ajout dans la barre latérale
+
+if chiraq_text:
+    # Section pour le nuage de mots
+    if show_wordcloud:
+        st.subheader("Nuage de mots")
+        wordcloud_buffer = generate_wordcloud(chiraq_text, background_color=wordcloud_bg_color)
+        st.image(wordcloud_buffer)
+
+    # Section pour l'embedding
+    if embedding_type != "Aucun":
+        st.title(f"Analyse de similarité avec {embedding_type}")
+        
+        # Prétraitement pour l'embedding
+        processed_sentences = preprocess_for_embedding(sentences)
+        
+        # Entraînement du modèle selon le type choisi
+        if embedding_type == "Word2Vec":
+            model = train_word2vec(processed_sentences)
+        else:  # FastText
+            model = train_fasttext(processed_sentences)
+        
+        # Création des vecteurs de phrases
+        sentence_vectors = np.array([
+            get_sentence_vector(model, sentence.lower().split())
+            for sentence in sentences
+        ])
+        
+        # Calcul des similarités cosinus entre les phrases
+        similarities = cosine_similarity(sentence_vectors)
+        
+        # Affichage de la matrice de similarité
+        similarity_df = pd.DataFrame(
+            similarities,
+            columns=[f'Doc {i+1}' for i in range(len(sentences))],
+            index=[f'Doc {i+1}' for i in range(len(sentences))]
+        )
+        
+        st.write(f"Matrice de similarité ({embedding_type}):")
+        st.dataframe(similarity_df)
+        
+        # Visualisation des similarités avec une heatmap
+        st.write(f"Heatmap des similarités ({embedding_type}):")
+        fig = px.imshow(
+            similarities,
+            labels=dict(x="Document", y="Document", color="Similarité"),
+        
+        )
+        st.plotly_chart(fig)
+
+        # Ajout d'une section pour explorer les mots similaires
+        st.subheader("Explorer les mots similaires")
+        word_to_explore = st.text_input("Entrez un mot pour voir ses plus proches voisins :")
+        if word_to_explore:
+            try:
+                similar_words = model.wv.most_similar(word_to_explore.lower())
+                st.write("Mots les plus similaires :")
+                for word, score in similar_words:
+                    st.write(f"- {word}: {score:.4f}")
+            except KeyError:
+                st.warning("Ce mot n'est pas dans le vocabulaire du modèle.")
+
+try:
+    # Gestion des erreurs pour l'affichage des figures
+    plt.close('all')  # Fermer toutes les figures matplotlib ouvertes
+except:
+    pass
 ###################
-from sklearn.feature_extraction.text import TfidfVectorizer
+
 def calculer_similarite(phrase, documents):
     vectorizer = TfidfVectorizer()
     # Fusionner la phrase recherchée et les documents
@@ -274,10 +451,18 @@ def calculer_similarite(phrase, documents):
     return similarites
 ##########
 # Entrée pour le numéro de document
+sentences = split_into_sentences(chiraq_text)
+
+# Then create the number input without the sentences parameter
 doc_requete = st.number_input("Entrez le numéro du document (1 à N) :", 
-                               sentences = split_into_sentences(chiraq_text),
-                              min_value=1, max_value=len(sentences), step=1) - 1
-k = st.slider("Choisissez le nombre de documents similaires à afficher :", 1, len(sentences)-1, 3)
+                             min_value=1, 
+                             max_value=len(sentences), 
+                             step=1) - 1
+
+k = st.slider("Choisissez le nombre de documents similaires à afficher :", 
+              1, 
+              len(sentences)-1, 
+              3)
 # Entrée pour rechercher une phrase dans les documents
 phrase_recherche = st.text_input("Entrez une phrase pour rechercher dans les documents :")
 
@@ -299,7 +484,6 @@ if st.button("Trouver les documents similaires"):
         st.write(f"Document {idx + 1} avec similarité de {sim:.4f} : {phrase[:200]}...")  # Afficher un extrait de 200 caractères de la phrase
 
     
-
 
 
 
@@ -372,7 +556,12 @@ if chiraq_text:
     sentences = split_into_sentences(chiraq_text)
     st.write(f"Le texte contient {len(sentences)} phrases.")
 
-    unique_tokens = preprocess_text(sentences)
+    unique_tokens, processed_sentences = preprocess_text(
+        sentences, 
+        remove_stopwords=remove_stopwords, 
+        apply_stemming=apply_stemming, 
+        selected_stemmer_name=selected_stemmer_name, 
+        langue=langue)
     tf_binary, tf_occ, tf_occ_normalized, terms = create_matrices(sentences)
 
     # Calcul du TF-IDF

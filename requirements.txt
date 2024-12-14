@@ -2,15 +2,13 @@ streamlit
 scipy
 numpy
 pandas
-<<<<<<< HEAD
 seaborn   
 matplotlib
 wordcloud 
 sklearn
 networkx 
-     
-
-=======
+wordcloud  
 scikit-learn
->>>>>>> 61ee0c68a1a58c1458ddfdf5c02f10bd5b7d4c76
-# Ajoutez d'autres bibliothèques nécessaires ici
+chardet
+gensim
+
