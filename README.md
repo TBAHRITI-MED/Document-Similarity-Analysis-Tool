@@ -10,16 +10,20 @@ Ce projet permet d'analyser, de comparer et de rechercher des similarités entre
 - **Calcul de la similarité** : Utilise **TF-IDF** et **Cosine Similarity** pour trouver les phrases les plus similaires dans un ou plusieurs fichiers.
 - **Nuage de mots** : Crée un nuage de mots pour une visualisation rapide des termes les plus fréquents dans les documents.
 
-### 2. **Chatbot pour Similarité**
+### 2. **Recherche dans les Documents**
+- **Recherche dans un fichier ou un dossier** : Permet à l'utilisateur de choisir entre rechercher dans un dossier complet ou un fichier spécifique. Les phrases les plus similaires à une phrase de recherche sont affichées avec leurs scores de similarité.
+- **Affichage des phrases similaires** : Utilise **TF-IDF** et **Cosine Similarity** pour trouver et afficher les phrases les plus similaires à la phrase recherchée.
+
+### 3. **Chatbot pour Similarité**
 - **Génération de réponses similaires** : Un chatbot génère des réponses similaires basées sur ce que l'utilisateur écrit. Il fonctionne en utilisant la **similarité cosinus** avec des phrases extraites des documents.
 - **Exploration des mots similaires** : Permet à l'utilisateur de voir les mots les plus similaires à un mot donné en utilisant **Word2Vec** ou **FastText**.
 
-### 3. **Prétraitement du Texte**
+### 4. **Prétraitement du Texte**
 - **Suppression des stop words** : L'application permet de supprimer les mots les plus fréquents (comme "et", "le", etc.), si nécessaire.
 - **Stemming** : Applique différentes techniques de stemming, comme **Porter**, **Lancaster**, et **Snowball**. L'utilisateur peut choisir le type de stemming à appliquer.
 - **Visualisation des transformations** : Compare les phrases avant et après le stemming.
 
-### 4. **Options de Configuration dans la Barre Latérale**
+### 5. **Options de Configuration dans la Barre Latérale**
 Les utilisateurs peuvent personnaliser l'analyse des documents avec les options suivantes dans la barre latérale :
 
 - **Choix de la langue** : Sélectionnez **Français** ou **Anglais** pour le traitement du texte.
@@ -39,7 +43,7 @@ Les utilisateurs peuvent personnaliser l'analyse des documents avec les options 
   - **Aucun**
 - **Nuage de mots** : Affichez un nuage de mots généré à partir du texte ou du fichier téléchargé. Personnalisez la couleur de fond et le nombre de mots à afficher.
 
-### 5. **Méthode d'Entrée du Texte**
+### 6. **Méthode d'Entrée du Texte**
 Les utilisateurs peuvent choisir comment entrer leur texte dans l'application :
 - **Rédaction manuelle** : Saisir ou coller du texte directement dans la zone de texte.
 - **Téléchargement de fichier** : Déposer un fichier `.txt` pour l'analyser.
@@ -52,10 +56,14 @@ Les utilisateurs peuvent choisir comment entrer leur texte dans l'application :
 - **Recherche de similarité** : Entrez une phrase pour la comparer aux phrases extraites des documents. Les résultats seront affichés avec des scores de similarité.
 - **Nuage de mots** : Un nuage de mots est généré pour le fichier ou le dossier sélectionné.
 
-### 2. **Chatbot**
+### 2. **Recherche dans les Documents**
+- **Recherche dans un fichier ou un dossier** : Cette fonctionnalité permet de charger soit un dossier complet de fichiers `.txt`, soit un fichier individuel et d'analyser le texte pour en extraire les phrases similaires à une phrase recherchée par l'utilisateur.
+- **Affichage des phrases similaires** : Les phrases les plus similaires sont affichées sous forme de liste, accompagnées de leurs scores de similarité.
+
+### 3. **Chatbot**
 Le chatbot de ce projet prend en entrée une phrase de l'utilisateur et génère les phrases les plus similaires à partir des documents analysés. Le chatbot fonctionne avec **Cosine Similarity**, et les résultats sont affichés avec leurs scores de similarité.
 
-### 3. **Prétraitement et Stemming**
+### 4. **Prétraitement et Stemming**
 L'application permet de choisir parmi plusieurs options de prétraitement :
 - **Suppression des stop words** : Si activée, cette option supprimera les mots les plus fréquents (en français ou en anglais) avant d'analyser le texte.
 - **Stemming** : Applique le stemming avec les algorithmes suivants :
@@ -108,10 +116,15 @@ Le stemming peut être appliqué ou non en fonction des besoins. L'application m
 - **Recherche de similarité** : Entrez une phrase pour la comparer aux phrases extraites des documents. Les résultats seront affichés avec des scores de similarité.
 - **Nuage de mots** : Un nuage de mots est généré pour le fichier ou le dossier sélectionné.
 
-### Page 2 : **Chatbot**
+### Page 2 : **Recherche dans les Documents**
+- **Choisir un fichier ou un dossier** : Sélectionnez un fichier spécifique ou un dossier complet contenant des fichiers `.txt` pour analyser les similarités.
+- **Recherche de similarité** : Entrez une phrase pour comparer avec les phrases extraites du fichier ou du dossier.
+- **Affichage des résultats** : Les phrases les plus similaires à votre phrase de recherche seront affichées avec leurs scores de similarité.
+
+### Page 3 : **Chatbot**
 - **Interaction avec le chatbot** : Saisissez une phrase dans l'interface et le chatbot génère une ou plusieurs réponses similaires en fonction des phrases extraites des documents.
 
-### Page 3 : **Prétraitement et Stemming**
+### Page 4 : **Prétraitement et Stemming**
 - **Suppression des stop words** : Activez cette option pour supprimer les mots fréquents comme "et", "le", etc.
 - **Choix du type de stemming** : Sélectionnez le type de stemming à appliquer parmi **Porter**, **Lancaster**, ou **Snowball**.
 - **Affichage des résultats** : Comparez les phrases avant et après l'application du stemming.
@@ -140,4 +153,3 @@ Si vous souhaitez contribuer à ce projet, suivez ces étapes :
 ## Auteur
 
 - **TBAHRITI Mohammed** - Développeur principal
-
