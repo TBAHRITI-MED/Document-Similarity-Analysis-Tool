@@ -29,15 +29,13 @@ def load_retrieval_model():
 def load_qa_pipeline():
     """
     Pipeline QA francophone (CamemBERT fine-tuné sur FQuAD / Piaf),
-    en forçant l'usage du tokenizer "lent" pour éviter l'erreur Tiktoken.
+    en forçant l'usage du tokenizer "lent".
     """
-    # On instancie manuellement le tokenizer lent
     my_tokenizer = CamembertTokenizer.from_pretrained(
         "etalab-ia/camembert-base-squadFR-fquad-piaf",
-        use_fast=False,           # force le tokenizer lent
-        trust_remote_code=True    # si besoin pour autoriser le code distant
+        use_fast=False,           
+        trust_remote_code=True
     )
-    # On crée ensuite le pipeline en indiquant déjà ce tokenizer
     my_pipeline = pipeline(
         "question-answering",
         model="etalab-ia/camembert-base-squadFR-fquad-piaf",
@@ -79,16 +77,15 @@ if uploaded_file:
         st.write(f"{idx}. {sentence}")
 
     ###########################################
-    # 3) Approche BASIQUE (selon le prof)
+    # 3) Approche BASIQUE (scénario prof)
     ###########################################
     if approach == "Basique (Scénario prof)":
         st.subheader("Scénario Basique : TF-IDF, similarité cosinus, mot significatif")
 
-        # Input de l'utilisateur
         user_input = st.text_input("Entrez votre question :")
 
         if user_input:
-            # -- Formules de politesse simples en fonction de la question --
+            # Formules de politesse selon le début de la question
             polite_prefix = ""
             question_lower = user_input.lower().strip()
             if question_lower.startswith("comment"):
@@ -103,14 +100,14 @@ if uploaded_file:
             vectorizer = TfidfVectorizer()
             tfidf_matrix = vectorizer.fit_transform(corpus)
 
-            # Séparation : question (ligne 0), corpus (ligne 1..n)
+            # Séparation : question (ligne 0), corpus (ligne 1..)
             question_tfidf = tfidf_matrix[0:1]
             corpus_tfidf = tfidf_matrix[1:]
 
             # Similarités cosinus
             similarities = cosine_similarity(question_tfidf, corpus_tfidf).flatten()
 
-            # Index de la phrase la plus similaire
+            # Phrase la plus similaire
             best_index = np.argmax(similarities)
             best_sentence = sentences[best_index]
 
@@ -125,60 +122,63 @@ if uploaded_file:
                 most_significant_token = ""
 
             # Vérifier la présence du token dans la phrase
+            st.write("**Réponse :**")
             if most_significant_token:
                 token_position = best_sentence.lower().find(most_significant_token.lower())
-                st.write("**Réponse :**")
                 if token_position != -1:
-                    # Token trouvé
                     st.write(polite_prefix + best_sentence)
                 else:
-                    # Token pas trouvé, on renvoie quand même la phrase
                     st.write(polite_prefix + best_sentence)
             else:
-                # Pas de token significatif
-                st.write("**Réponse :**")
                 st.write(polite_prefix + best_sentence)
 
+            # Affichage du score
             st.write("---")
             st.write(f"Phrase la plus pertinente (score={similarities[best_index]:.4f}) : {best_sentence}")
 
     ###########################################
-    # 4) Approche AVANCÉE (Hugging Face QA)
+    # 4) Approche AVANCÉE (améliorée)
     ###########################################
     else:
         st.subheader("Scénario Avancé : Sentence-BERT + QA CamemBERT")
+
+        # Choix du nombre de phrases à combiner
+        k = st.slider("Combien de phrases combiner pour le contexte ?", 1, 10, 3)
 
         user_question = st.text_input("Posez votre question :")
 
         if user_question:
             st.write("Calcul de la similarité sémantique via Sentence-BERT...")
 
-            # 4a) Encoder toutes les phrases du corpus
+            # Encoder toutes les phrases du corpus
             sentence_embeddings = retrieval_model.encode(sentences, convert_to_tensor=True)
-
-            # 4b) Encoder la question
+            # Encoder la question
             question_embedding = retrieval_model.encode(user_question, convert_to_tensor=True)
 
-            # 4c) Similarités cosinus
+            # Similarités cosinus
             similarities = util.cos_sim(question_embedding, sentence_embeddings)[0].cpu().numpy()
 
-            # 4d) Récupérer la phrase la plus proche
-            best_index = int(np.argmax(similarities))
-            best_sentence = sentences[best_index]
+            # Au lieu d'une seule phrase, on récupère les indices triés par ordre décroissant
+            sorted_indices = np.argsort(similarities)[::-1]
 
-            st.write(f"**Phrase sélectionnée (score={similarities[best_index]:.4f})** :")
-            st.write(best_sentence)
+            # Concaténer les k phrases les plus pertinentes en un seul bloc
+            top_k_sentences = [sentences[i] for i in sorted_indices[:k]]
+            context = " ".join(top_k_sentences)
 
-            # 4e) Passage au pipeline QA
-            st.write("Appel au modèle Question-Answering (CamemBERT lent)...")
+            st.write("**Phrases sélectionnées :**")
+            for i, idx in enumerate(sorted_indices[:k], start=1):
+                st.write(f"{i}) [score={similarities[idx]:.4f}] : {sentences[idx]}")
+
+            # Passage au pipeline QA
+            st.write("Appel au modèle Question-Answering (CamemBERT)...")
             qa_input = {
                 "question": user_question,
-                "context": best_sentence
+                "context": context
             }
             result = qa_pipeline(qa_input)
 
             st.write("**Réponse générée** : ", result["answer"])
-            st.write(f"(confiance : {result['score']:.4f})")
+            st.write(f"(Confiance : {result['score']:.4f})")
 
 else:
     st.info("Veuillez téléverser un fichier .txt pour commencer.")
