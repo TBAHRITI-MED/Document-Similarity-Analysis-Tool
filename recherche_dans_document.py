@@ -50,20 +50,27 @@ def charger_fichiers_et_tokenizer(folder_path):
     - textes_complets : liste de strings (le texte intégral de chaque fichier)
     - documents_tokenized : liste de toutes les phrases de tous les fichiers
     - noms_fichiers : liste des noms de fichiers
+    - file_mapping : liste qui indique, pour chaque phrase de documents_tokenized, le nom du fichier d'où elle provient
     """
     documents_tokenized = []
     noms_fichiers = []
     textes_complets = []
+    file_mapping = []  # <--- NOUVELLE liste pour traquer le fichier de chaque phrase
     
     for file_name in os.listdir(folder_path):
         if file_name.endswith(".txt"):
             file_path = os.path.join(folder_path, file_name)
             texte, phrases = charger_et_tokenizer_fichier(file_path)
-            documents_tokenized.extend(phrases)  # on ajoute toutes les phrases dans la liste "globale"
-            textes_complets.append(texte)        # on garde le texte complet du fichier
-            noms_fichiers.append(file_name)      # on note le nom du fichier
+            textes_complets.append(texte)
+            noms_fichiers.append(file_name)
+            
+            # On ajoute chaque phrase + on note le file_name associé
+            for p in phrases:
+                documents_tokenized.append(p)
+                file_mapping.append(file_name)  # associer le même file_name à toutes les phrases du fichier
     
-    return textes_complets, documents_tokenized, noms_fichiers
+    return textes_complets, documents_tokenized, noms_fichiers, file_mapping
+
 
 ############################################
 # FONCTIONS D'ANALYSE (SIMILARITÉ & VISUELS)
@@ -162,7 +169,7 @@ if choix_analyse == "Dossier":
 
     if folder_path and os.path.isdir(folder_path):
         st.success("Dossier chargé avec succès !")
-        textes_complets, documents_tokenized, noms_fichiers = charger_fichiers_et_tokenizer(folder_path)
+        textes_complets, documents_tokenized, noms_fichiers, file_mapping = charger_fichiers_et_tokenizer(folder_path)
         st.write(f"Fichiers chargés et tokenisés : {len(noms_fichiers)} fichiers trouvés.")
         st.write(f"Nombre total de phrases (tous fichiers confondus) : {len(documents_tokenized)}")
 
@@ -219,8 +226,13 @@ if choix_analyse == "Dossier":
                 
                 st.subheader("Résultats détaillés")
                 for idx in indices_similaires[:k]:
-                    st.write(f"Phrase similaire (score : {similarites_recherche[idx]:.4f}):")
-                    st.write(f"{documents_tokenized[idx]}")
+                     st.write(f"Phrase similaire (score : {similarites_recherche[idx]:.4f}):")
+                        # documents_tokenized[idx] = phrase
+                        # file_mapping[idx] = nom du fichier correspondant
+                     nom_fichier_source = file_mapping[idx]
+                     # Afficher la phrase + le fichier dont elle provient
+                     st.write(f"- **Fichier** : {nom_fichier_source}")
+                     st.write(f"- **Phrase** : {documents_tokenized[idx]}")
 
         elif mode_recherche == "Recherche dans un fichier spécifique":
             ############################################
@@ -251,16 +263,23 @@ if choix_analyse == "Dossier":
                         st.pyplot(creer_graphique_top_phrases(similarites_recherche, k))
                     
                     # Résultats textuels
+                    # Résultats textuels
                     indices_similaires = sorted(
-                        range(len(similarites_recherche)),
-                        key=lambda i: similarites_recherche[i],
-                        reverse=True
+                    range(len(similarites_recherche)),
+                    key=lambda i: similarites_recherche[i],
+                    reverse=True
                     )
-                    
+
                     st.subheader("Résultats détaillés")
                     for idx in indices_similaires[:k]:
-                        st.write(f"Phrase similaire (score : {similarites_recherche[idx]:.4f}):")
-                        st.write(f"{sentences[idx]}")
+                     st.write(f"Phrase similaire (score : {similarites_recherche[idx]:.4f}):")
+                        # documents_tokenized[idx] = phrase
+                        # file_mapping[idx] = nom du fichier correspondant
+                     nom_fichier_source = file_mapping[idx]
+                     # Afficher la phrase + le fichier dont elle provient
+                     st.write(f"- **Fichier** : {nom_fichier_source}")
+                     st.write(f"- **Phrase** : {documents_tokenized[idx]}")
+
 
         else:
             ############################################
