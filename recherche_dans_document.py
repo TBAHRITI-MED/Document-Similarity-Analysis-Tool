@@ -14,10 +14,49 @@ import pandas as pd
 # Téléchargements NLTK silencieux
 nltk.download('punkt', quiet=True)
 nltk.download('stopwords', quiet=True)
-# nltk.download('punkt_tab', quiet=True)  # Si nécessaire, généralement 'punkt' suffit
 
 ############################################
-# FONCTIONS DE CHARGEMENT ET DE TOKENISATION
+# 1) CONFIGURATION STREAMLIT
+############################################
+st.set_page_config(
+    page_title="Recherche de Documents",
+    page_icon="📂",
+    layout="wide"
+)
+
+# Insertion d'un bloc CSS pour le style
+st.markdown("""
+<style>
+    .big-title {
+        font-size:250%;
+        color: #2F4F4F; /* DarkSlateGray */
+        text-align: center;
+        margin-top: 0.2em;
+        margin-bottom: 0.2em;
+    }
+    .subtitle {
+        font-size:130%;
+        color: #8B008B; /* DarkMagenta */
+        margin-top: 1em;
+        margin-bottom: 0.5em;
+    }
+    .section-heading {
+        font-size:115%;
+        color: #2E8B57; /* SeaGreen */
+        margin-top: 1em;
+        margin-bottom: 0.5em;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+############################################
+# 2) TITRE DE L'APPLICATION
+############################################
+st.markdown('<h1 class="big-title">📂 Recherche de Documents</h1>', unsafe_allow_html=True)
+st.write("Ce programme permet de **rechercher** et d'**analyser** des documents texte (fichiers `.txt`).")
+
+############################################
+# 3) FONCTIONS DE CHARGEMENT ET TOKENISATION
 ############################################
 
 def detecter_encodage(filepath):
@@ -45,42 +84,42 @@ def charger_et_tokenizer_fichier(file_path):
 def charger_fichiers_et_tokenizer(folder_path):
     """
     Parcourt tous les .txt dans un dossier,
-    charge leur contenu et leurs phrases,
-    retourne :
-    - textes_complets : liste de strings (le texte intégral de chaque fichier)
-    - documents_tokenized : liste de toutes les phrases de tous les fichiers
-    - noms_fichiers : liste des noms de fichiers
-    - file_mapping : liste qui indique, pour chaque phrase de documents_tokenized, le nom du fichier d'où elle provient
+    charge leur contenu et leurs phrases.
+
+    Retourne :
+    - textes_complets : liste[str] (contenu texte intégral de chaque fichier)
+    - documents_tokenized : liste[str] (toutes les phrases issues de tous les fichiers)
+    - noms_fichiers : liste[str] (noms de fichiers)
+    - file_mapping : liste[str] qui indique, pour chaque phrase, le fichier d'où elle provient
     """
     documents_tokenized = []
     noms_fichiers = []
     textes_complets = []
-    file_mapping = []  # <--- NOUVELLE liste pour traquer le fichier de chaque phrase
+    file_mapping = []
     
     for file_name in os.listdir(folder_path):
         if file_name.endswith(".txt"):
             file_path = os.path.join(folder_path, file_name)
             texte, phrases = charger_et_tokenizer_fichier(file_path)
-            textes_complets.append(texte)
-            noms_fichiers.append(file_name)
-            
-            # On ajoute chaque phrase + on note le file_name associé
-            for p in phrases:
-                documents_tokenized.append(p)
-                file_mapping.append(file_name)  # associer le même file_name à toutes les phrases du fichier
+            if texte.strip():
+                textes_complets.append(texte)
+                noms_fichiers.append(file_name)
+                # On enregistre chaque phrase + on note le file_name
+                for p in phrases:
+                    documents_tokenized.append(p)
+                    file_mapping.append(file_name)
     
     return textes_complets, documents_tokenized, noms_fichiers, file_mapping
 
-
 ############################################
-# FONCTIONS D'ANALYSE (SIMILARITÉ & VISUELS)
+# 4) FONCTIONS D'ANALYSE (SIMILARITÉ & VISUELS)
 ############################################
 
 def calculer_similarite(phrase_recherche, phrases):
     """
     Calcule la similarité cosinus entre `phrase_recherche`
     et chaque phrase de la liste `phrases`, via TF-IDF.
-    Retourne un tableau de similarités (float).
+    Retourne un array de similarités (float).
     """
     vectorizer = TfidfVectorizer()
     vecteurs = vectorizer.fit_transform([phrase_recherche] + list(phrases))
@@ -89,12 +128,12 @@ def calculer_similarite(phrase_recherche, phrases):
 
 def creer_nuage_mots(texte):
     """
-    Crée et retourne un WordCloud (nuage de mots) pour le texte donné,
+    Génère un WordCloud (nuage de mots) pour le texte donné,
     en filtrant les stopwords français.
     """
     stopwords_fr = set(stopwords.words('french'))
     wordcloud = WordCloud(
-        width=800, 
+        width=800,
         height=400,
         background_color='white',
         stopwords=stopwords_fr,
@@ -131,228 +170,199 @@ def creer_graphique_top_phrases(similarites, n=5):
     plt.title(f'Top {n} phrases les plus similaires')
     return plt
 
-###############################
-# NOUVELLE FONCTION :
-# COMPARAISON FICHIER À FICHIERS
-###############################
-
 def calculer_similarite_fichiers(textes_complets, index_fichier_reference):
     """
     Compare un fichier (index_fichier_reference) à tous les autres fichiers
-    de la liste textes_complets, via TF-IDF.
-    Retourne un array de similarités (une valeur pour chaque fichier).
+    dans la liste textes_complets, via TF-IDF + Cosine Similarity.
+    Retourne un tableau de similarités.
     """
     vectorizer = TfidfVectorizer()
-    # On vectorise tous les documents (fichiers)
     tfidf_matrix = vectorizer.fit_transform(textes_complets)
-    # On récupère le vecteur du fichier cible
     vecteur_ref = tfidf_matrix[index_fichier_reference]
-    # Calcul de la similarité cosinus avec tous les fichiers
     similarites = cosine_similarity(vecteur_ref, tfidf_matrix).flatten()
     return similarites
 
 ############################################
-# INTERFACE UTILISATEUR AVEC STREAMLIT
+# 5) INTERFACE UTILISATEUR STREAMLIT
 ############################################
 
-st.title("Recherche de Documents")
-st.write("Ce programme permet de rechercher et d'analyser des documents texte.")
-
-# Choisir entre un fichier ou un dossier
+st.markdown("### Choix du mode d'analyse")
 choix_analyse = st.radio(
     "Souhaitez-vous analyser un dossier complet ou un fichier spécifique ?",
-    ("Dossier", "Fichier")
+    ("Dossier", "Fichier", "Plusieurs dossiers")
 )
 
-if choix_analyse == "Dossier":
+if choix_analyse == "Plusieurs dossiers":
+    st.markdown("Vous avez choisi : **Plusieurs dossiers**")
+    st.markdown("[Aller vers multiple_dossiers 🗂️](http://localhost:8504)")
+    st.stop()
+
+elif choix_analyse == "Dossier":
+    st.markdown("<h3 class='subtitle'>Analyse d'un Dossier</h3>", unsafe_allow_html=True)
     folder_path = st.text_input("Chemin du dossier contenant les fichiers :")
 
     if folder_path and os.path.isdir(folder_path):
         st.success("Dossier chargé avec succès !")
         textes_complets, documents_tokenized, noms_fichiers, file_mapping = charger_fichiers_et_tokenizer(folder_path)
-        st.write(f"Fichiers chargés et tokenisés : {len(noms_fichiers)} fichiers trouvés.")
-        st.write(f"Nombre total de phrases (tous fichiers confondus) : {len(documents_tokenized)}")
+        st.write(f"Fichiers chargés et tokenisés : **{len(noms_fichiers)}** fichiers trouvés.")
+        st.write(f"Nombre total de phrases (tous fichiers confondus) : **{len(documents_tokenized)}**")
 
         if "show_phrases" not in st.session_state:
             st.session_state.show_phrases = False
 
         # Bouton pour basculer l'affichage des phrases
-        if st.button("Afficher/Cacher toutes les phrases"):
+        if st.button("📜 Afficher/Cacher toutes les phrases"):
             st.session_state.show_phrases = not st.session_state.show_phrases
 
         if st.session_state.show_phrases:
-            st.write("Les phrases détectées (tous fichiers) :")
+            st.markdown("#### Phrases détectées (tous fichiers) :")
             for idx, sentence in enumerate(documents_tokenized, start=1):
                 st.write(f"{idx}. {sentence}")
         else:
-            st.write("Les phrases sont masquées. Cliquez sur le bouton pour les afficher.")
+            st.write("*(Les phrases sont masquées. Cliquez sur le bouton pour les afficher.)*")
 
         # Nuage de mots global (tous fichiers)
-        st.subheader("Nuage de mots pour tous les documents")
+        st.markdown("<h3 class='section-heading'>Nuage de mots (global)</h3>", unsafe_allow_html=True)
         texte_complet = " ".join(textes_complets)
-        st.pyplot(creer_nuage_mots(texte_complet))
+        fig_cloud = creer_nuage_mots(texte_complet)
+        st.pyplot(fig_cloud)
 
         # Choix du type de recherche
+        st.markdown("<h3 class='section-heading'>Mode de recherche</h3>", unsafe_allow_html=True)
         mode_recherche = st.radio(
             "Mode de recherche :",
             ["Recherche de phrase", "Recherche dans un fichier spécifique", "Comparer un fichier à d'autres fichiers"]
         )
 
         if mode_recherche == "Recherche de phrase":
-            ############################################
             # RECHERCHE DE PHRASE (TOUS FICHIERS)
-            ############################################
-            phrase_recherche = st.text_input("Entrez une phrase à rechercher dans TOUS les fichiers :")
-            k = st.slider("Nombre de résultats les plus similaires à afficher :", 1, 20, 5)
+            st.markdown("#### Recherche de phrase (TOUS les fichiers)")
+            phrase_recherche = st.text_input("Entrez une phrase :")
+            k = st.slider("Nombre de résultats à afficher :", 1, 20, 5)
 
             if phrase_recherche:
-                similarites_recherche = calculer_similarite(phrase_recherche, documents_tokenized)
-                
+                simil_recherche = calculer_similarite(phrase_recherche, documents_tokenized)
+
                 # Graphique distribution + top K
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.subheader("Distribution des scores de similarité")
-                    st.pyplot(creer_graphique_distribution(similarites_recherche))
+                    st.markdown("**Distribution des scores**")
+                    plt_dist = creer_graphique_distribution(simil_recherche)
+                    st.pyplot(plt_dist)
                 with col2:
-                    st.subheader(f"Top {k} phrases les plus similaires")
-                    st.pyplot(creer_graphique_top_phrases(similarites_recherche, k))
-                
+                    st.markdown(f"**Top {k} phrases**")
+                    plt_top = creer_graphique_top_phrases(simil_recherche, k)
+                    st.pyplot(plt_top)
+
                 # Résultats textuels
-                indices_similaires = sorted(
-                    range(len(similarites_recherche)),
-                    key=lambda i: similarites_recherche[i],
-                    reverse=True
-                )
-                
-                st.subheader("Résultats détaillés")
-                for idx in indices_similaires[:k]:
-                     st.write(f"Phrase similaire (score : {similarites_recherche[idx]:.4f}):")
-                        # documents_tokenized[idx] = phrase
-                        # file_mapping[idx] = nom du fichier correspondant
-                     nom_fichier_source = file_mapping[idx]
-                     # Afficher la phrase + le fichier dont elle provient
-                     st.write(f"- **Fichier** : {nom_fichier_source}")
-                     st.write(f"- **Phrase** : {documents_tokenized[idx]}")
+                idxs_sorted = sorted(range(len(simil_recherche)), key=lambda i: simil_recherche[i], reverse=True)
+                st.markdown("**Résultats détaillés** :")
+                for idx in idxs_sorted[:k]:
+                    st.write(f"Phrase similaire (score={simil_recherche[idx]:.4f}) :")
+                    nom_fichier_source = file_mapping[idx]
+                    st.write(f"- **Fichier** : {nom_fichier_source}")
+                    st.write(f"- **Phrase** : {documents_tokenized[idx]}")
 
         elif mode_recherche == "Recherche dans un fichier spécifique":
-            ############################################
             # RECHERCHE DE PHRASE (UN SEUL FICHIER)
-            ############################################
+            st.markdown("#### Recherche dans un Fichier Spécifique")
             selected_file = st.selectbox("Choisissez un fichier :", noms_fichiers)
             if selected_file:
                 file_index = noms_fichiers.index(selected_file)
                 texte, sentences = charger_et_tokenizer_fichier(os.path.join(folder_path, selected_file))
-                
-                # Nuage de mots pour le fichier choisi
-                st.subheader(f"Nuage de mots pour {selected_file}")
-                st.pyplot(creer_nuage_mots(texte))
 
-                phrase_recherche = st.text_input(f"Entrez une phrase pour rechercher dans {selected_file} :")
-                k = st.slider("Nombre de résultats les plus similaires à afficher :", 1, 20, 5)
+                st.markdown(f"**Nuage de mots pour** `{selected_file}` :")
+                fig_cloud_local = creer_nuage_mots(texte)
+                st.pyplot(fig_cloud_local)
+
+                phrase_recherche = st.text_input(f"Entrez une phrase pour la recherche :")
+                k = st.slider("Nombre de résultats :", 1, 20, 5)
 
                 if phrase_recherche:
-                    similarites_recherche = calculer_similarite(phrase_recherche, sentences)
+                    simil_recherche = calculer_similarite(phrase_recherche, sentences)
                     
-                    # Graphique distribution + top K
                     col1, col2 = st.columns(2)
                     with col1:
-                        st.subheader("Distribution des scores de similarité")
-                        st.pyplot(creer_graphique_distribution(similarites_recherche))
+                        st.markdown("**Distribution des scores**")
+                        fig_dist_local = creer_graphique_distribution(simil_recherche)
+                        st.pyplot(fig_dist_local)
                     with col2:
-                        st.subheader(f"Top {k} phrases les plus similaires")
-                        st.pyplot(creer_graphique_top_phrases(similarites_recherche, k))
+                        st.markdown(f"**Top {k} phrases**")
+                        fig_top_local = creer_graphique_top_phrases(simil_recherche, k)
+                        st.pyplot(fig_top_local)
                     
-                    # Résultats textuels
-                    # Résultats textuels
-                    indices_similaires = sorted(
-                    range(len(similarites_recherche)),
-                    key=lambda i: similarites_recherche[i],
-                    reverse=True
-                    )
-
-                    st.subheader("Résultats détaillés")
-                    for idx in indices_similaires[:k]:
-                     st.write(f"Phrase similaire (score : {similarites_recherche[idx]:.4f}):")
-                        # documents_tokenized[idx] = phrase
-                        # file_mapping[idx] = nom du fichier correspondant
-                     nom_fichier_source = file_mapping[idx]
-                     # Afficher la phrase + le fichier dont elle provient
-                     st.write(f"- **Fichier** : {nom_fichier_source}")
-                     st.write(f"- **Phrase** : {documents_tokenized[idx]}")
-
+                    idxs_local = sorted(range(len(simil_recherche)), key=lambda i: simil_recherche[i], reverse=True)
+                    st.markdown("**Résultats détaillés** :")
+                    for idx in idxs_local[:k]:
+                        st.write(f"Phrase similaire (score={simil_recherche[idx]:.4f}) :")
+                        nom_fichier_source = file_mapping[idx]
+                        st.write(f"- **Fichier** : {nom_fichier_source}")
+                        st.write(f"- **Phrase** : {sentences[idx]}")
 
         else:
-            ############################################
             # COMPARER UN FICHIER À D'AUTRES FICHIERS
-            ############################################
-            st.subheader("Comparer un fichier à tous les autres dans le dossier")
+            st.markdown("#### Comparer un fichier aux autres (dans le dossier)")
             selected_file = st.selectbox("Choisissez un fichier à comparer :", noms_fichiers)
-            k = st.slider("Nombre de fichiers les plus similaires à afficher :", 1, 20, 5)
+            k = st.slider("Nombre de fichiers similaires à afficher :", 1, 20, 5)
 
             if selected_file:
-                # Récupérer l'index du fichier choisi
                 file_index = noms_fichiers.index(selected_file)
-                # Calculer la similarité du fichier avec tous les fichiers
-                similarites_docs = calculer_similarite_fichiers(textes_complets, file_index)
+                simil_docs = calculer_similarite_fichiers(textes_complets, file_index)
 
-                # On veut trier les fichiers par similarité
-                # NB: similarites_docs[file_index] = 1.0 (c'est le même fichier)
-                indices_tries = sorted(range(len(similarites_docs)),
-                                       key=lambda i: similarites_docs[i],
-                                       reverse=True)
-                
-                st.subheader("Résultats de similarité entre fichiers")
+                idxs_sorted = sorted(range(len(simil_docs)), key=lambda i: simil_docs[i], reverse=True)
+                st.markdown("**Résultats de similarité** :")
                 cpt = 0
-                for i in indices_tries:
+                for i in idxs_sorted:
                     if i == file_index:
-                        continue  # on saute le fichier lui-même
+                        continue
                     cpt += 1
-                    st.write(f"Fichier : {noms_fichiers[i]} (score={similarites_docs[i]:.4f})")
+                    st.write(f"Fichier : {noms_fichiers[i]} (score={simil_docs[i]:.4f})")
                     if cpt >= k:
                         break
 
 elif choix_analyse == "Fichier":
-    ############################################
-    # ANALYSE SUR UN SEUL FICHIER (CHEMIN TEXTE)
-    ############################################
+    # ANALYSE SUR UN SEUL FICHIER
+    st.markdown("<h3 class='subtitle'>Analyse d'un Fichier Unique</h3>", unsafe_allow_html=True)
     file_path = st.text_input("Entrez le chemin complet du fichier à analyser :")
 
     if file_path:
         texte, documents_tokenized = charger_et_tokenizer_fichier(file_path)
         if texte:
-            st.write(f"Fichier chargé et tokenisé avec succès !")
+            st.success("Fichier chargé et tokenisé avec succès !")
             st.write(f"Nombre total de phrases : {len(documents_tokenized)}")
 
-            # Nuage de mots pour le fichier
-            st.subheader("Nuage de mots du document")
-            st.pyplot(creer_nuage_mots(texte))
+            st.markdown("#### Nuage de mots du document")
+            fig_cloud_single = creer_nuage_mots(texte)
+            st.pyplot(fig_cloud_single)
 
             phrase_recherche = st.text_input("Entrez une phrase pour rechercher dans ce fichier :")
             k = st.slider("Nombre de résultats les plus similaires à afficher :", 1, 20, 5)
 
             if phrase_recherche:
-                similarites_recherche = calculer_similarite(phrase_recherche, documents_tokenized)
-                
-                # Visualisations
+                sims_rech = calculer_similarite(phrase_recherche, documents_tokenized)
+
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.subheader("Distribution des scores de similarité")
-                    st.pyplot(creer_graphique_distribution(similarites_recherche))
+                    st.markdown("**Distribution des scores**")
+                    fig_dist_sing = creer_graphique_distribution(sims_rech)
+                    st.pyplot(fig_dist_sing)
                 
                 with col2:
-                    st.subheader(f"Top {k} phrases les plus similaires")
-                    st.pyplot(creer_graphique_top_phrases(similarites_recherche, k))
+                    st.markdown(f"**Top {k} phrases**")
+                    fig_top_sing = creer_graphique_top_phrases(sims_rech, k)
+                    st.pyplot(fig_top_sing)
                 
-                # Résultats textuels
-                indices_similaires = sorted(
-                    range(len(similarites_recherche)),
-                    key=lambda i: similarites_recherche[i],
-                    reverse=True
-                )
-                
-                st.subheader("Résultats détaillés")
-                for idx in indices_similaires[:k]:
-                    st.write(f"Phrase similaire (score : {similarites_recherche[idx]:.4f}):")
+                idxs_sing = sorted(range(len(sims_rech)), key=lambda i: sims_rech[i], reverse=True)
+                st.markdown("**Résultats détaillés** :")
+                for idx in idxs_sing[:k]:
+                    st.write(f"Phrase similaire (score={sims_rech[idx]:.4f}) :")
                     st.write(f"{documents_tokenized[idx]}")
         else:
             st.error("Le fichier n'a pas pu être chargé ou est vide.")
+    else:
+        st.info("Veuillez fournir un chemin de fichier texte valide.")
+
+try:
+    plt.close('all')
+except:
+    pass
