@@ -7,7 +7,7 @@ from scipy.special import kl_div
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.preprocessing import normalize
 from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
+from nltk.stem import PorterStemmer, LancasterStemmer, SnowballStemmer
 import webbrowser
 import nltk
 from scipy.spatial.distance import cdist
@@ -20,7 +20,7 @@ from collections import Counter
 import io
 import base64
 from sklearn.metrics.pairwise import cosine_similarity
-from nltk.stem import PorterStemmer, LancasterStemmer, SnowballStemmer
+from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import word_tokenize
 
 # Téléchargements NLTK silencieux
@@ -185,23 +185,25 @@ def K_plus_proches_documents(doc_requete, k, similarity_matrix, sentences):
 # 4) VISUALISATION / WORDCLOUD
 ############################################
 
-def generate_wordcloud(text, background_color='white'):
+def creer_nuage_mots(texte, langue="Français", remove_stopwords=True, background_color='white'):
+    if remove_stopwords:
+        stopwords_fr = set(stopwords.words('french' if langue == "Français" else 'english'))
+    else:
+        stopwords_fr = None
+
     wordcloud = WordCloud(
-        background_color=background_color,
         width=800,
         height=400,
+        background_color=background_color,
+        stopwords=stopwords_fr,
         max_words=150
-    ).generate(text)
+    ).generate(texte)
     
     plt.figure(figsize=(10, 5))
     plt.imshow(wordcloud, interpolation='bilinear')
     plt.axis('off')
-    
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png')
-    plt.close()
-    buf.seek(0)
-    return buf
+    return plt
+
 
 ############################################
 # 5) EMBEDDING Word2Vec / FastText
@@ -246,73 +248,62 @@ def get_sentence_vector(model, sentence_words):
 ############################################
 st.markdown('<h1 class="title-custom">Analyse de similarité de documents</h1>', unsafe_allow_html=True)
 
-# Barre latérale
 st.sidebar.subheader("Paramètres de configuration 🛠️")
 st.sidebar.write("### Navigation :")
 page_selection = st.sidebar.radio("Sélectionner une page :", ["Page principale", "Recherche dans un document", "Chatbot"])
 
 if page_selection == "Recherche dans un document":
     webbrowser.open("http://localhost:8502/")
-    st.write("Redirection vers la page de recherche dans un document...")
+    st.stop()
 elif page_selection == "Chatbot":
-    st.write("Redirection vers le chatbot...")
     webbrowser.open("http://localhost:8503/")
+    st.stop()
 else:
     st.sidebar.write("""
     **Instructions :** Sélectionnez les options ci-dessus pour configurer l'analyse de similarité.
     """)
 
-    # Choix de la langue
     langue = st.sidebar.radio("Choisissez la langue du texte :", ("Français", "Anglais"))
 
-    # Prétraitement
     st.sidebar.subheader("Prétraitement du texte ✂️")
     remove_stopwords = st.sidebar.checkbox("Supprimer les stop words", value=True)
     apply_stemming = st.sidebar.checkbox("Appliquer le stemming", value=False)
 
-    # Stemmers
-    stemmers = {
-        "Porter": PorterStemmer(),
-        "Lancaster": LancasterStemmer(),
-        "Snowball (English)": SnowballStemmer("english"),
-        "Snowball (French)": SnowballStemmer("french")
-    }
-    selected_stemmer_name = st.sidebar.selectbox("Choisissez le type de stemming :", list(stemmers.keys()))
-    selected_stemmer = stemmers[selected_stemmer_name]
+    # Filtrage des stemmers selon la langue
+    if langue == "Français":
+        available_stemmers = {
+            "Lancaster": LancasterStemmer(),
+            "Snowball (French)": SnowballStemmer("french")
+        }
+    else:
+        available_stemmers = {
+            "Porter": PorterStemmer(),
+            "Lancaster": LancasterStemmer(),
+            "Snowball (English)": SnowballStemmer("english")
+        }
+    selected_stemmer_name = st.sidebar.selectbox("Choisissez le type de stemming :", list(available_stemmers.keys()))
+    selected_stemmer = available_stemmers[selected_stemmer_name]
 
-    # Descripteur + normalisation
-    descripteur = st.sidebar.selectbox("Choisissez le descripteur à utiliser :", ["Binaire", "Occurrence"])
+    descripteur = st.sidebar.selectbox("Choisissez le descripteur à utiliser :", ["Binaire", "Occurrence", "TF-IDF"])
     normalization_type = st.sidebar.selectbox("Choisissez la méthode de normalisation :", ["Aucune", "Probabilité", "L2"])
 
-    # Métrique
     distance_type = st.sidebar.selectbox(
         "Choisissez la métrique de distance :",
         ["Manhattan", "Euclidienne", "Jaccard", "Hamming", "Bray-Curtis", "Kullback-Leibler", "Cosinus"]
     )
 
-    st.sidebar.write("""
-    **Vous pouvez entrer votre texte manuellement ou en téléchargeant un fichier .txt.**
-    """)
-
-    # Input mode
-    input_mode = st.sidebar.radio("Comment voulez-vous entrer le texte ?", ("Rédaction manuelle", "Déposer un fichier .txt"))
-
-    # Embedding
     st.sidebar.markdown("---")
     st.sidebar.subheader("Paramètres d'embedding ✨")
-    embedding_type = st.sidebar.selectbox(
-        "Choisissez le type d'embedding",
-        ["Word2Vec", "FastText", "Aucun"]
-    )
+    embedding_type = st.sidebar.selectbox("Choisissez le type d'embedding", ["Word2Vec", "FastText", "Aucun"])
 
-    # Nuage de mots
     st.sidebar.markdown("---")
     st.sidebar.subheader("Nuage de mots ☁️")
     show_wordcloud = st.sidebar.checkbox("Afficher le nuage de mots")
     wordcloud_bg_color = st.sidebar.color_picker("Couleur de fond du nuage de mots", "#ffffff")
     wordcloud_max_words = st.sidebar.slider("Nombre maximum de mots", 50, 300, 150)
 
-    # Zone de texte
+    input_mode = st.sidebar.radio("Comment voulez-vous entrer le texte ?", ("Rédaction manuelle", "Déposer un fichier .txt"))
+
     if input_mode == "Rédaction manuelle":
         chiraq_text = st.text_area("📝 Rédigez ou collez votre texte ici :")
     else:
@@ -320,144 +311,148 @@ else:
         if uploaded_file is not None:
             chiraq_text = uploaded_file.read().decode("utf-8")
         else:
-            chiraq_text = """La confiance que vous venez de me témoigner... (texte par défaut)"""
+            chiraq_text = ""
 
-    # TRAITEMENT
-    if chiraq_text:
-        with st.spinner("Traitement en cours..."):
-            sentences = split_into_sentences(chiraq_text)
-            unique_tokens, processed_sentences = preprocess_text(
-                sentences,
-                remove_stopwords,
-                apply_stemming,
-                selected_stemmer_name,
-                langue
-            )
-            binary_matrix, occurrence_matrix = create_matrices(processed_sentences, unique_tokens, normalization_type)
+############################################
+# 7) TRAITEMENT ET ANALYSE
+############################################
+if chiraq_text:
+    with st.spinner("Traitement en cours..."):
+        sentences = split_into_sentences(chiraq_text)
+        unique_tokens, processed_sentences = preprocess_text(
+            sentences,
+            remove_stopwords,
+            apply_stemming,
+            selected_stemmer_name,
+            langue
+        )
+        binary_matrix, occurrence_matrix = create_matrices(processed_sentences, unique_tokens, normalization_type)
 
-        # Choix binaire vs occurrence
-        if descripteur == "Binaire":
-            matrix = binary_matrix
+    if descripteur == "Binaire":
+        matrix = binary_matrix
+    elif descripteur == "Occurrence":
+        matrix = occurrence_matrix
+    elif descripteur == "TF-IDF":
+        vectorizer_tfidf = TfidfVectorizer()
+        corpus_for_tfidf = [" ".join(s.split()) for s in processed_sentences]
+        tfidf_matrix = vectorizer_tfidf.fit_transform(corpus_for_tfidf)
+        matrix = tfidf_matrix.toarray()
+
+    if distance_type == "Manhattan":
+        distance_matrix = calculate_manhattan_distance(matrix)
+    elif distance_type == "Euclidienne":
+        distance_matrix = calculate_euclidean_distance(matrix)
+    elif distance_type == "Jaccard":
+        distance_matrix = calculate_jaccard_distance(binary_matrix)
+    elif distance_type == "Hamming":
+        distance_matrix = calculate_hamming_distance(binary_matrix)
+    elif distance_type == "Bray-Curtis":
+        distance_matrix = calculate_bray_curtis_distance(matrix)
+    elif distance_type == "Kullback-Leibler":
+        distance_matrix = calculate_kullback_leibler_distance(matrix)
+    elif distance_type == "Cosinus":
+        distance_matrix = calculate_cosine_distance(matrix)
+
+    distance_df = pd.DataFrame(
+        distance_matrix,
+        columns=[f'Doc {i+1}' for i in range(len(sentences))],
+        index=[f'Doc {i+1}' for i in range(len(sentences))]
+    )
+    st.markdown('<h2 class="subtitle-custom">Matrice de distance</h2>', unsafe_allow_html=True)
+    st.dataframe(distance_df)
+
+    similarity_matrix = 1 - (distance_matrix / np.max(distance_matrix))
+    similarity_df = pd.DataFrame(
+        similarity_matrix,
+        columns=[f'Doc {i+1}' for i in range(len(sentences))],
+        index=[f'Doc {i+1}' for i in range(len(sentences))]
+    )
+    st.markdown('<h2 class="subtitle-custom">Matrice de similarité</h2>', unsafe_allow_html=True)
+    st.dataframe(similarity_df)
+
+    options_docs = [
+        f"Document {i + 1}: {processed_sentences[i][:100]}..."
+        if len(processed_sentences[i]) > 100
+        else f"Document {i + 1}: {processed_sentences[i]}"
+        for i in range(len(processed_sentences))
+    ]
+    st.write(options_docs)
+
+    if show_wordcloud:
+     st.markdown('<h2 class="section-heading">Nuage de mots</h2>', unsafe_allow_html=True)
+     wc_plot = creer_nuage_mots(chiraq_text, langue=langue, remove_stopwords=remove_stopwords, background_color=wordcloud_bg_color)
+     st.pyplot(wc_plot)
+
+
+    if embedding_type != "Aucun":
+        st.markdown(f'<h2 class="section-heading">Analyse de similarité avec {embedding_type}</h2>', unsafe_allow_html=True)
+        embed_sentences = preprocess_for_embedding(sentences)
+        
+        if embedding_type == "Word2Vec":
+            model = train_word2vec(embed_sentences)
         else:
-            matrix = occurrence_matrix
+            model = train_fasttext(embed_sentences)
 
-        # Calcul distance
-        if distance_type == "Manhattan":
-            distance_matrix = calculate_manhattan_distance(matrix)
-        elif distance_type == "Euclidienne":
-            distance_matrix = calculate_euclidean_distance(matrix)
-        elif distance_type == "Jaccard":
-            distance_matrix = calculate_jaccard_distance(binary_matrix)
-        elif distance_type == "Hamming":
-            distance_matrix = calculate_hamming_distance(binary_matrix)
-        elif distance_type == "Bray-Curtis":
-            distance_matrix = calculate_bray_curtis_distance(matrix)
-        elif distance_type == "Kullback-Leibler":
-            distance_matrix = calculate_kullback_leibler_distance(matrix)
-        elif distance_type == "Cosinus":
-            distance_matrix = calculate_cosine_distance(matrix)
-
-        distance_df = pd.DataFrame(
-            distance_matrix,
+        sentence_vectors = np.array([
+            get_sentence_vector(model, s.lower().split())
+            for s in sentences
+        ])
+        similarities_embed = cosine_similarity(sentence_vectors)
+        similarity_df_embed = pd.DataFrame(
+            similarities_embed,
             columns=[f'Doc {i+1}' for i in range(len(sentences))],
             index=[f'Doc {i+1}' for i in range(len(sentences))]
         )
-        st.markdown('<h2 class="subtitle-custom">Matrice de distance</h2>', unsafe_allow_html=True)
-        st.dataframe(distance_df)
+        st.write(f"Matrice de similarité ({embedding_type}) :")
+        st.dataframe(similarity_df_embed)
 
-        # Similarité
-        similarity_matrix = calculate_similarity_matrix(distance_matrix)
-        similarity_df = pd.DataFrame(
-            similarity_matrix,
-            columns=[f'Doc {i+1}' for i in range(len(sentences))],
-            index=[f'Doc {i+1}' for i in range(len(sentences))]
+        st.write(f"Heatmap des similarités ({embedding_type}) :")
+        import plotly.express as px
+        fig_heat = px.imshow(
+            similarities_embed,
+            labels=dict(x="Document", y="Document", color="Similarité")
         )
-        st.markdown('<h2 class="subtitle-custom">Matrice de similarité</h2>', unsafe_allow_html=True)
-        st.dataframe(similarity_df)
+        st.plotly_chart(fig_heat)
 
-        # Documents
-        options_docs = [
-            f"Document {i + 1}: {processed_sentences[i][:100]}..."
-            if len(processed_sentences[i]) > 100
-            else f"Document {i + 1}: {processed_sentences[i]}"
-            for i in range(len(processed_sentences))
-        ]
-        st.write(options_docs)
+        st.subheader("Explorer les mots similaires")
+        word_to_explore = st.text_input("Entrez un mot pour voir ses plus proches voisins :")
+        if word_to_explore:
+            try:
+                similar_words = model.wv.most_similar(word_to_explore.lower())
+                st.write("Mots les plus similaires :")
+                for word, score in similar_words:
+                    st.write(f"- {word}: {score:.4f}")
+            except KeyError:
+                st.warning("Ce mot n'est pas dans le vocabulaire du modèle.")
 
-        # Nuage de mots si coché
-        if show_wordcloud:
-            st.markdown('<h2 class="section-heading">Nuage de mots</h2>', unsafe_allow_html=True)
-            wc_buf = generate_wordcloud(chiraq_text, background_color=wordcloud_bg_color)
-            st.image(wc_buf)
+    st.markdown("---")
+    st.markdown("### 📝 Calculer la similarité d'une phrase avec tous les documents :")
 
-        # Embeddings
-        if embedding_type != "Aucun":
-            st.markdown(f'<h2 class="section-heading">Analyse de similarité avec {embedding_type}</h2>', unsafe_allow_html=True)
-            embed_sentences = preprocess_for_embedding(sentences)
-            
-            if embedding_type == "Word2Vec":
-                model = train_word2vec(embed_sentences)
-            else:
-                model = train_fasttext(embed_sentences)
+    def calculer_similarite_local(phrase, documents):
+        vect = TfidfVectorizer()
+        corpus_local = [phrase] + documents
+        tfidf_matrix_local = vect.fit_transform(corpus_local)
+        sims_local = (tfidf_matrix_local * tfidf_matrix_local.T).A[0][1:]
+        return sims_local
 
-            sentence_vectors = np.array([
-                get_sentence_vector(model, s.lower().split())
-                for s in sentences
-            ])
-            similarities_embed = cosine_similarity(sentence_vectors)
-            similarity_df_embed = pd.DataFrame(
-                similarities_embed,
-                columns=[f'Doc {i+1}' for i in range(len(sentences))],
-                index=[f'Doc {i+1}' for i in range(len(sentences))]
-            )
-            st.write(f"Matrice de similarité ({embedding_type}) :")
-            st.dataframe(similarity_df_embed)
+    doc_requete = st.number_input("Entrez le numéro du document (1 à N) :", min_value=1, max_value=len(sentences), step=1) - 1
+    k_docs = st.slider("Choisissez le nombre de documents similaires à afficher :", 1, len(sentences)-1, 3)
 
-            st.write(f"Heatmap des similarités ({embedding_type}) :")
-            fig_heat = px.imshow(
-                similarities_embed,
-                labels=dict(x="Document", y="Document", color="Similarité")
-            )
-            st.plotly_chart(fig_heat)
+    phrase_recherche = st.text_input("Entrez une phrase pour la comparer aux documents :")
+    if phrase_recherche:
+        sims_req = calculer_similarite_local(phrase_recherche, sentences)
+        indices_sorted = sorted(range(len(sims_req)), key=lambda i: sims_req[i], reverse=True)
+        st.write(f"Les {k_docs} documents les plus similaires à la phrase :")
+        for idx in indices_sorted[:k_docs]:
+            st.write(f"- Document {idx + 1} (sim={sims_req[idx]:.4f}) : {sentences[idx][:200]}...")
 
-            st.subheader("Explorer les mots similaires")
-            word_to_explore = st.text_input("Entrez un mot pour voir ses plus proches voisins :")
-            if word_to_explore:
-                try:
-                    similar_words = model.wv.most_similar(word_to_explore.lower())
-                    st.write("Mots les plus similaires :")
-                    for word, score in similar_words:
-                        st.write(f"- {word}: {score:.4f}")
-                except KeyError:
-                    st.warning("Ce mot n'est pas dans le vocabulaire du modèle.")
+    if st.button("Trouver les documents similaires entre eux"):
+        k_plus_proches = K_plus_proches_documents(doc_requete, k_docs, similarity_matrix, sentences)
+        st.write(f"Les {k_docs} documents les plus similaires au document {doc_requete + 1} :")
+        for idx2, sim2, phrase2 in k_plus_proches:
+            st.write(f"- Document {idx2 + 1} (sim={sim2:.4f}) : {phrase2[:200]}...")
 
-        # Complément
-        st.markdown("---")
-        st.markdown("### 📝 Calculer la similarité d'une phrase avec tous les documents :")
 
-        def calculer_similarite(phrase, documents):
-            vect = TfidfVectorizer()
-            corpus_local = [phrase] + documents
-            tfidf_matrix_local = vect.fit_transform(corpus_local)
-            sims_local = (tfidf_matrix_local * tfidf_matrix_local.T).A[0][1:]
-            return sims_local
-
-        doc_requete = st.number_input("Entrez le numéro du document (1 à N) :", min_value=1, max_value=len(sentences), step=1) - 1
-        k_docs = st.slider("Choisissez le nombre de documents similaires à afficher :", 1, len(sentences)-1, 3)
-
-        phrase_recherche = st.text_input("Entrez une phrase pour la comparer aux documents :")
-        if phrase_recherche:
-            sims_req = calculer_similarite(phrase_recherche, sentences)
-            indices_sorted = sorted(range(len(sims_req)), key=lambda i: sims_req[i], reverse=True)
-            st.write(f"Les {k_docs} documents les plus similaires à la phrase :")
-            for idx in indices_sorted[:k_docs]:
-                st.write(f"- Document {idx + 1} (sim={sims_req[idx]:.4f}) : {sentences[idx][:200]}...")
-
-        if st.button("Trouver les documents similaires entre eux"):
-            k_plus_proches = K_plus_proches_documents(doc_requete, k_docs, similarity_matrix, sentences)
-            st.write(f"Les {k_docs} documents les plus similaires au document {doc_requete + 1} :")
-            for idx2, sim2, phrase2 in k_plus_proches:
-                st.write(f"- Document {idx2 + 1} (sim={sim2:.4f}) : {phrase2[:200]}...")
 
         # TF-IDF manuel
         st.markdown("### TF-IDF manuel (par Documents) :")
