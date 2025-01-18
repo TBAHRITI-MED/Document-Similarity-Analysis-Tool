@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from wordcloud import WordCloud
 import pandas as pd
+import numpy as np
+from PIL import Image  # pour ouvrir les images de masque
 
 # Téléchargements NLTK silencieux
 nltk.download('punkt', quiet=True)
@@ -24,25 +26,25 @@ st.set_page_config(
     layout="wide"
 )
 
-# Insertion d'un bloc CSS pour le style
+# CSS
 st.markdown("""
 <style>
     .big-title {
         font-size:250%;
-        color: #2F4F4F; /* DarkSlateGray */
+        color: #2F4F4F;
         text-align: center;
         margin-top: 0.2em;
         margin-bottom: 0.2em;
     }
     .subtitle {
         font-size:130%;
-        color: #8B008B; /* DarkMagenta */
+        color: #8B008B; 
         margin-top: 1em;
         margin-bottom: 0.5em;
     }
     .section-heading {
         font-size:115%;
-        color: #2E8B57; /* SeaGreen */
+        color: #2E8B57; 
         margin-top: 1em;
         margin-bottom: 0.5em;
     }
@@ -60,17 +62,11 @@ st.write("Ce programme permet de **rechercher** et d'**analyser** des documents 
 ############################################
 
 def detecter_encodage(filepath):
-    """Détecte l'encodage du fichier."""
     with open(filepath, 'rb') as file:
         resultat = chardet.detect(file.read())
         return resultat['encoding']
 
 def charger_et_tokenizer_fichier(file_path):
-    """
-    Ouvre un fichier texte, détecte l'encodage, le lit,
-    et le découpe en phrases (sent_tokenize).
-    Retourne (texte_complet, liste_de_phrases).
-    """
     try:
         encoding = detecter_encodage(file_path)
         with open(file_path, 'r', encoding=encoding, errors='ignore') as file:
@@ -82,16 +78,6 @@ def charger_et_tokenizer_fichier(file_path):
         return "", []
 
 def charger_fichiers_et_tokenizer(folder_path):
-    """
-    Parcourt tous les .txt dans un dossier,
-    charge leur contenu et leurs phrases.
-
-    Retourne :
-    - textes_complets : liste[str] (contenu texte intégral de chaque fichier)
-    - documents_tokenized : liste[str] (toutes les phrases issues de tous les fichiers)
-    - noms_fichiers : liste[str] (noms de fichiers)
-    - file_mapping : liste[str] qui indique, pour chaque phrase, le fichier d'où elle provient
-    """
     documents_tokenized = []
     noms_fichiers = []
     textes_complets = []
@@ -104,7 +90,6 @@ def charger_fichiers_et_tokenizer(folder_path):
             if texte.strip():
                 textes_complets.append(texte)
                 noms_fichiers.append(file_name)
-                # On enregistre chaque phrase + on note le file_name
                 for p in phrases:
                     documents_tokenized.append(p)
                     file_mapping.append(file_name)
@@ -116,39 +101,50 @@ def charger_fichiers_et_tokenizer(folder_path):
 ############################################
 
 def calculer_similarite(phrase_recherche, phrases):
-    """
-    Calcule la similarité cosinus entre `phrase_recherche`
-    et chaque phrase de la liste `phrases`, via TF-IDF.
-    Retourne un array de similarités (float).
-    """
     vectorizer = TfidfVectorizer()
     vecteurs = vectorizer.fit_transform([phrase_recherche] + list(phrases))
     similarites = cosine_similarity(vecteurs[0:1], vecteurs[1:]).flatten()
     return similarites
 
-def creer_nuage_mots(texte):
+def creer_nuage_mots(texte, langue="Français"):
     """
-    Génère un WordCloud (nuage de mots) pour le texte donné,
-    en filtrant les stopwords français.
+    Génère un WordCloud dans la forme d'une carte de la France ou de l'Angleterre
+    selon la langue détectée.
     """
-    stopwords_fr = set(stopwords.words('french'))
-    wordcloud = WordCloud(
+    # Choisir l'image de masque en fonction de la langue
+    if langue == "Français":
+        mask_path = "france-map.jpg"  # Assurez-vous d'avoir ce fichier
+        st.write("Nuage de mots : Forme de la carte de la France.")
+        stop_lang = set(stopwords.words('french'))
+    else:
+        mask_path = "usa-map.jpg"  # Assurez-vous d'avoir ce fichier
+        st.write("Nuage de mots : Forme de la carte de l'Angleterre.")
+        stop_lang = set(stopwords.words('english'))
+
+    try:
+        mask_image = np.array(Image.open(mask_path))
+    except Exception as e:
+        st.warning(f"Impossible de charger le masque {mask_path} : {e}")
+        mask_image = None  # fallback si on ne trouve pas l'image
+
+    # Construction du WordCloud
+    wc = WordCloud(
         width=800,
         height=400,
         background_color='white',
-        stopwords=stopwords_fr,
+        stopwords=stop_lang,
+        mask=mask_image,            # Utilise le masque (carte)
+        contour_width=1,
+        contour_color='black',
         min_font_size=10
     ).generate(texte)
     
     plt.figure(figsize=(10, 5))
-    plt.imshow(wordcloud, interpolation='bilinear')
+    plt.imshow(wc, interpolation='bilinear')
     plt.axis('off')
     return plt
 
 def creer_graphique_distribution(similarites):
-    """
-    Crée un histogramme de distribution des scores de similarité.
-    """
     plt.figure(figsize=(10, 5))
     sns.histplot(similarites, bins=20)
     plt.title('Distribution des scores de similarité')
@@ -157,9 +153,6 @@ def creer_graphique_distribution(similarites):
     return plt
 
 def creer_graphique_top_phrases(similarites, n=5):
-    """
-    Crée un bar plot pour afficher les top N phrases les plus similaires.
-    """
     top_indices = sorted(range(len(similarites)), key=lambda i: similarites[i], reverse=True)[:n]
     top_scores = [similarites[i] for i in top_indices]
     
@@ -171,11 +164,6 @@ def creer_graphique_top_phrases(similarites, n=5):
     return plt
 
 def calculer_similarite_fichiers(textes_complets, index_fichier_reference):
-    """
-    Compare un fichier (index_fichier_reference) à tous les autres fichiers
-    dans la liste textes_complets, via TF-IDF + Cosine Similarity.
-    Retourne un tableau de similarités.
-    """
     vectorizer = TfidfVectorizer()
     tfidf_matrix = vectorizer.fit_transform(textes_complets)
     vecteur_ref = tfidf_matrix[index_fichier_reference]
@@ -190,6 +178,11 @@ st.markdown("### Choix du mode d'analyse")
 choix_analyse = st.radio(
     "Souhaitez-vous analyser un dossier complet ou un fichier spécifique ?",
     ("Dossier", "Fichier", "Plusieurs dossiers")
+)
+
+langue = st.radio(
+    "Quelle est la langue principale du texte ?",
+    ("Français", "Anglais")
 )
 
 if choix_analyse == "Plusieurs dossiers":
@@ -224,7 +217,7 @@ elif choix_analyse == "Dossier":
         # Nuage de mots global (tous fichiers)
         st.markdown("<h3 class='section-heading'>Nuage de mots (global)</h3>", unsafe_allow_html=True)
         texte_complet = " ".join(textes_complets)
-        fig_cloud = creer_nuage_mots(texte_complet)
+        fig_cloud = creer_nuage_mots(texte_complet, langue=langue)  # <-- on passe la langue
         st.pyplot(fig_cloud)
 
         # Choix du type de recherche
@@ -235,7 +228,6 @@ elif choix_analyse == "Dossier":
         )
 
         if mode_recherche == "Recherche de phrase":
-            # RECHERCHE DE PHRASE (TOUS FICHIERS)
             st.markdown("#### Recherche de phrase (TOUS les fichiers)")
             phrase_recherche = st.text_input("Entrez une phrase :")
             k = st.slider("Nombre de résultats à afficher :", 1, 20, 5)
@@ -243,7 +235,6 @@ elif choix_analyse == "Dossier":
             if phrase_recherche:
                 simil_recherche = calculer_similarite(phrase_recherche, documents_tokenized)
 
-                # Graphique distribution + top K
                 col1, col2 = st.columns(2)
                 with col1:
                     st.markdown("**Distribution des scores**")
@@ -254,7 +245,6 @@ elif choix_analyse == "Dossier":
                     plt_top = creer_graphique_top_phrases(simil_recherche, k)
                     st.pyplot(plt_top)
 
-                # Résultats textuels
                 idxs_sorted = sorted(range(len(simil_recherche)), key=lambda i: simil_recherche[i], reverse=True)
                 st.markdown("**Résultats détaillés** :")
                 for idx in idxs_sorted[:k]:
@@ -264,7 +254,6 @@ elif choix_analyse == "Dossier":
                     st.write(f"- **Phrase** : {documents_tokenized[idx]}")
 
         elif mode_recherche == "Recherche dans un fichier spécifique":
-            # RECHERCHE DE PHRASE (UN SEUL FICHIER)
             st.markdown("#### Recherche dans un Fichier Spécifique")
             selected_file = st.selectbox("Choisissez un fichier :", noms_fichiers)
             if selected_file:
@@ -272,7 +261,7 @@ elif choix_analyse == "Dossier":
                 texte, sentences = charger_et_tokenizer_fichier(os.path.join(folder_path, selected_file))
 
                 st.markdown(f"**Nuage de mots pour** `{selected_file}` :")
-                fig_cloud_local = creer_nuage_mots(texte)
+                fig_cloud_local = creer_nuage_mots(texte, langue=langue)  # <-- on passe la langue
                 st.pyplot(fig_cloud_local)
 
                 phrase_recherche = st.text_input(f"Entrez une phrase pour la recherche :")
@@ -300,7 +289,6 @@ elif choix_analyse == "Dossier":
                         st.write(f"- **Phrase** : {sentences[idx]}")
 
         else:
-            # COMPARER UN FICHIER À D'AUTRES FICHIERS
             st.markdown("#### Comparer un fichier aux autres (dans le dossier)")
             selected_file = st.selectbox("Choisissez un fichier à comparer :", noms_fichiers)
             k = st.slider("Nombre de fichiers similaires à afficher :", 1, 20, 5)
@@ -321,7 +309,6 @@ elif choix_analyse == "Dossier":
                         break
 
 elif choix_analyse == "Fichier":
-    # ANALYSE SUR UN SEUL FICHIER
     st.markdown("<h3 class='subtitle'>Analyse d'un Fichier Unique</h3>", unsafe_allow_html=True)
     file_path = st.text_input("Entrez le chemin complet du fichier à analyser :")
 
@@ -332,7 +319,7 @@ elif choix_analyse == "Fichier":
             st.write(f"Nombre total de phrases : {len(documents_tokenized)}")
 
             st.markdown("#### Nuage de mots du document")
-            fig_cloud_single = creer_nuage_mots(texte)
+            fig_cloud_single = creer_nuage_mots(texte, langue=langue)  # <-- on passe la langue
             st.pyplot(fig_cloud_single)
 
             phrase_recherche = st.text_input("Entrez une phrase pour rechercher dans ce fichier :")
